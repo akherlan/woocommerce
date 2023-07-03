@@ -1,0 +1,42 @@
+name: Scraping
+on:
+  push:
+    branches:
+      - scraping
+  workflow_dispatch:
+
+jobs:
+  scraping-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.8
+          
+      - name: Install module
+        run: |
+          python -m pip install --upgrade pip
+          pip install httpx selectolax
+
+      - name: Crawling process
+        run: python crawler.py -u https://elizabeth.co.id elizabeth.txt
+        
+      - name: Scraping process
+        run: python scraper.py -i elizabeth.txt elizabeth.json
+
+      - name: File checking
+        run: |
+          wc -l elizabeth.txt
+        
+      - name: Commit result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add *.json
+          timestamp=$(TZ='Asia/Jakarta' date +'%a, %F at %H:%M %Z')
+          git commit -m "Update data from ${{ github.ref_name }} on ${timestamp}" || exit 0
+          git push
