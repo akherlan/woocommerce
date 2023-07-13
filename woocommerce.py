@@ -47,14 +47,16 @@ class WooProductUrlCrawler:
 
     async def fetch(self):
         response = await self.session.get(self.shop_url)
-        async for item in self.extract_link(response):
-            yield item
-            if self.all_product:
-                navs = self.extract_navigation(response)
-                for task in asyncio.as_completed(navs):
-                    response = await task
-                    async for item in self.extract_link(response):
-                        yield item
+        if response and not response.is_error:
+            async for item in self.extract_link(response):
+                yield item
+                if self.all_product:
+                    navs = self.extract_navigation(response)
+                    for task in asyncio.as_completed(navs):
+                        response = await task
+                        if response and not response.is_error:
+                            async for item in self.extract_link(response):
+                                yield item
 
     async def extract_link(self, response):
         html = HTMLParser(response.text)
