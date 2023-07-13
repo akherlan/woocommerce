@@ -2,8 +2,10 @@ name: Test Job
 on:
   push:
     branches:
-      - main
       - devel
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
@@ -21,21 +23,20 @@ jobs:
       - name: Install module
         run: |
           python -m pip install --upgrade pip
-          pip install httpx selectolax
+          pip install -r requirements.txt
 
       - name: Test crawling
         run: |
-          python crawler.py -u https://elizabeth.co.id/ elizabeth.txt
+          python app.py -c crawl -i https://elizabeth.co.id/ elizabeth.txt
 
       - name: File checking
         run: |
           wc -l elizabeth.txt
           head -n 10 elizabeth.txt > test.txt
-          # head -n 5 palomino.txt >> test.txt
           cat test.txt
 
       - name: Test scraping
         run: |
-          # python scraper.py -i test.txt test.json
-          # cat test.json | jq
-          echo "OK"
+          python app.py -c scrape -i test.txt test.json
+          cat test.json | jq
+          

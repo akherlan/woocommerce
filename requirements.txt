@@ -1,0 +1,2 @@
+httpx==0.23.1
+selectolax==0.3.11
