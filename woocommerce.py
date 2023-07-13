@@ -68,7 +68,7 @@ class WooProductUrlCrawler:
         a_nav_selector = "a[class=page-number]"
         navs = list(map(lambda p: p.text(strip=True), html.css(a_nav_selector)))
         navigation_requests = [
-            self.session.get(urljoin(response.url, f"page/{i}/"))
+            self.session.get(urljoin(str(response.url), f"page/{i}/"))
             for i in range(2, int(navs[-1]) + 1)
         ]
         return navigation_requests
