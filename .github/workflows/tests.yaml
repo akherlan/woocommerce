@@ -25,18 +25,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Test crawling
+      - name: Test Scraping
         run: |
-          python app.py -c crawl -i https://elizabeth.co.id/ elizabeth.txt
+          python woocommerce.py -p products.csv -o offers.csv https://elizabeth.co.id
 
       - name: File checking
         run: |
-          wc -l elizabeth.txt
-          head -n 10 elizabeth.txt > test.txt
-          cat test.txt
-
-      - name: Test scraping
-        run: |
-          python app.py -c scrape -i test.txt test.json
-          cat test.json | jq
-          
+          head -n 15 products.csv
+          head -n 10 offers.csv
+          ls -lh | grep csv
