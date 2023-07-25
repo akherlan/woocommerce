@@ -3,7 +3,7 @@ from selectolax.parser import HTMLParser
 import pandas as pd
 from urllib.parse import urljoin, urlparse
 from datetime import datetime, timedelta, timezone
-from random import randint
+from random import randrange
 from time import sleep
 import logging
 import json
@@ -17,16 +17,22 @@ logging.basicConfig(
 )
 
 DEFAULT_HEADERS = {"user-agent": "httpx"}
+DEFAULT_TIMEOUT = 45  # second
 
 
 class WordpressScraper:
     def __init__(self, website, **kwargs):
-        self.session = httpx.Client(headers=DEFAULT_HEADERS, timeout=45, **kwargs)
+        self.session = httpx.Client(
+            headers=DEFAULT_HEADERS, timeout=DEFAULT_TIMEOUT, **kwargs
+        )
         self.website = website
         self.rawdata = None
 
     def fetch(self, limit=None):
-        # read more: https://developer.wordpress.org/rest-api/
+        """All product listing are available from Wordpress REST API
+        no need to crawl page by page
+        read more: https://developer.wordpress.org/rest-api/
+        """
         product_endpoint = "wp-json/wp/v2/product"
         url = urljoin(self.website, product_endpoint)
 
@@ -66,38 +72,33 @@ class WordpressScraper:
         product, offers = transformer.generate_dataset()
         return product, offers
 
+    def save(self, dataset, fname):
+        dataset.to_csv(fname, index=False)
+
 
 class Transformer:
     def __init__(self, rawdata, **kwargs):
-        self.session = httpx.Client(headers=DEFAULT_HEADERS, timeout=45, **kwargs)
-        self.rawdata = list(
-            filter(lambda item: item.get("status") == "publish", rawdata)
+        self.session = httpx.Client(
+            headers=DEFAULT_HEADERS, timeout=DEFAULT_TIMEOUT, **kwargs
         )
-        self.website = self.get_website()
+        self.rawdata = self.import_rawdata(rawdata)
 
     def import_rawdata(self, rawdata):
-        self.rawdata = rawdata
+        return list(filter(lambda item: item.get("status") == "publish", rawdata))
 
     def brand_list(self):
-        return {
-            "thisisapril.com": "This is April",
-            "jennaandkaia.co.id": "Jenna & Kaia",
-            "www.shafira.com": "Shafira",
-            "elizabeth.co.id": "Elizabeth",
-        }
+        fname = "wordpress.txt"
+        with open(fname) as fin:
+            brand = [line.strip().split(",") for line in fin.readlines()]
+            return {item[0]: item[1] for item in brand}
 
-    def define_brand(self):
-        domain = urlparse(self.website).netloc
-        brand = self.brand_list().get(domain)
-        if brand:
-            return brand
-        else:
-            return
+    def define_brand(self, item):
+        domain = urlparse(self.get_website(item)).netloc
+        return self.brand_list().get(domain)
 
-    def get_website(self):
-        if self.rawdata:
-            domain = urlparse(self.rawdata[0].get("link"))
-            return f"{domain.scheme}://{domain.netloc}"
+    def get_website(self, item):
+        domain = urlparse(item.get("link"))
+        return f"{domain.scheme}://{domain.netloc}"
 
     def get_sku(self, item):
         name = item.get("slug").split("-")
@@ -119,13 +120,12 @@ class Transformer:
                 lambda x: x.get("taxonomy") == "product_cat", item["_links"]["wp:term"]
             )
         )[0]["href"]
-        sleep(randint(0, 2))
         response = self.session.get(url)
         if response.status_code == 200:
             logging.info(
                 "GET category for {}".format(item.get("title").get("rendered"))
             )
-            return ", ".join([cat.get("name").title() for cat in response.json()])
+            return ",".join([cat.get("name").title() for cat in response.json()])
         else:
             logging.warning("GET category failed {}".format(item.get("link")))
             return
@@ -137,11 +137,10 @@ class Transformer:
             logging.error("bad response {} {}".format(response.status_code), link)
             return
         logging.info("GET price {}".format(link))
-        sleep(randint(0, 2))
         html = HTMLParser(response.text)
         brand_list = list(self.brand_list().values())
         brand_list.remove("This is April")
-        if self.define_brand() in brand_list:
+        if self.define_brand(item) in brand_list:
             varobj = html.css_first("form[enctype='multipart/form-data']")
             varobj = varobj.attributes.get("data-product_variations")
             varobj = json.loads(varobj)
@@ -179,16 +178,11 @@ class Transformer:
         return price, stock, sku, description
 
     def generate_dataset(self):
-        brand = self.define_brand()
-        if brand:
-            logging.info("brand: {}".format(brand))
-        else:
-            logging.warning("brand not included")
         # date_fmt = "%Y-%m-%dT%H:%M:%S%z"
         tzinfo = timezone(timedelta(hours=7))
         date_acquisition = datetime.now(tzinfo).replace(microsecond=0).isoformat()
 
-        if brand in list(self.brand_list().values()):
+        if self.rawdata:
             # images = list(map(lambda item: item.get("images"), self.rawdata))
             # tag = list(map(lambda item: item.get("tags"), self.rawdata))
             # variants = list(map(lambda item: item.get("variants"), self.rawdata))
@@ -215,6 +209,7 @@ class Transformer:
             ]
             product_collections, offers_collections = [], []
             for item in self.rawdata:
+                sleep(randrange(0, 2))
                 price, stock, sku, description = self.get_offers(item)
                 if not len(list(filter(lambda i: bool(len(i)), description))):
                     description = [item.get("excerpt").get("rendered")] * len(sku)
@@ -223,7 +218,7 @@ class Transformer:
                     [str(item.get("id"))] * len(sku),
                     sku,
                     [self.get_clean_name(item)] * len(sku),
-                    [brand] * len(sku),
+                    [self.define_brand(item)] * len(sku),
                     [self.get_category(item)] * len(sku),
                     [None] * len(sku),
                     [None] * len(sku),
@@ -241,7 +236,7 @@ class Transformer:
                     price,
                     stock,
                     [date_acquisition] * len(sku),
-                    [self.website] * len(sku),
+                    [self.get_website(item)] * len(sku),
                 )
                 offers = pd.DataFrame(list(offers_content), columns=offers_columns)
                 offers_collections.append(offers)
@@ -250,4 +245,5 @@ class Transformer:
             offers = pd.concat(offers_collections, ignore_index=True)
             return products, offers
         else:
+            logging.info("empty JSON, consider raw data to Transformer")
             return
