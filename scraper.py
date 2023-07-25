@@ -222,7 +222,7 @@ class Transformer:
             for item in self.rawdata:
                 sleep(randrange(0, 2))
                 price, stock, sku, description = self.get_offers(item)
-                if not len(list(filter(lambda i: bool(len(i)), description))):
+                if not description:
                     description = [item.get("excerpt").get("rendered")] * len(sku)
 
                 product_content = zip(
