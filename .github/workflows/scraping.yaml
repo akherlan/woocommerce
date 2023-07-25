@@ -1,0 +1,39 @@
+name: Scraping
+on:
+  push:
+    branches:
+      - scraping
+  workflow_dispatch:
+
+jobs:
+  scraping-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.8
+          
+      - name: Install module
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+        
+      - name: Scraping process
+        run: python woocommerce.py -p products_thisisapril.csv -o offers_thisisapril.csv https://thisisapril.com
+
+      - name: File checking
+        run: |
+          ls -lh | grep csv
+        
+      - name: Commit result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add *.csv
+          timestamp=$(TZ='Asia/Jakarta' date +'%a, %F at %H:%M %Z')
+          git commit -m "Update data from ${{ github.ref_name }} on ${timestamp}" || exit 0
+          git push
