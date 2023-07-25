@@ -134,7 +134,8 @@ class Transformer:
         varobj = html.css_first("form[enctype='multipart/form-data']")
         if varobj is not None:
             varstring = varobj.attributes.get("data-product_variations")
-            return json.loads(varstring)
+            if varstring is not None:
+                return json.loads(varstring)
         else:
             return
 
