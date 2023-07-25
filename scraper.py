@@ -18,6 +18,7 @@ logging.basicConfig(
 
 DEFAULT_HEADERS = {"user-agent": "httpx"}
 DEFAULT_TIMEOUT = 45  # second
+BRAND_LIST_TEXT = "wordpress.txt"
 
 
 class WordpressScraper:
@@ -87,8 +88,7 @@ class Transformer:
         return list(filter(lambda item: item.get("status") == "publish", rawdata))
 
     def brand_list(self):
-        fname = "wordpress.txt"
-        with open(fname) as fin:
+        with open(BRAND_LIST_TEXT) as fin:
             brand = [line.strip().split(",") for line in fin.readlines()]
             return {item[0]: item[1] for item in brand}
 
@@ -130,6 +130,14 @@ class Transformer:
             logging.warning("GET category failed {}".format(item.get("link")))
             return
 
+    def extract_variation_json(self, html):
+        varobj = html.css_first("form[enctype='multipart/form-data']")
+        if varobj is not None:
+            varstring = varobj.attributes.get("data-product_variations")
+            return json.loads(varstring)
+        else:
+            return
+
     def get_offers(self, item):
         link = item.get("link")
         response = self.session.get(link)
@@ -141,14 +149,16 @@ class Transformer:
         brand_list = list(self.brand_list().values())
         brand_list.remove("This is April")
         if self.define_brand(item) in brand_list:
-            varobj = html.css_first("form[enctype='multipart/form-data']")
-            varobj = varobj.attributes.get("data-product_variations")
-            varobj = json.loads(varobj)
-            # print(varobj)
-            sku = list(map(lambda x: x.get("sku"), varobj))
-            price = list(map(lambda x: x.get("display_price"), varobj))
-            stock = list(map(lambda x: x.get("is_in_stock"), varobj))
-            description = list(map(lambda x: x.get("variation_description"), varobj))
+            varjson = self.extract_variation_json(html)
+            if varjson is not None:
+                values = []
+                for key in ("sku", "display_price", "is_instock", "variation_description"):
+                    value = list(map(lambda item: item.get(key), varjson))
+                    values.append(value)
+                sku, price, stock, description = tuple(values)
+            else:
+                sku, price, stock, description = tuple([None] * 4)
+                logging.warning("cannot found JSON {}".format(link))
 
         else:  # This is April
             currency = html.css_first("p.price span[class*=currency]").text(strip=True)
@@ -245,5 +255,5 @@ class Transformer:
             offers = pd.concat(offers_collections, ignore_index=True)
             return products, offers
         else:
-            logging.info("empty JSON, consider raw data to Transformer")
+            logging.info("empty feed, consider raw data to Transformer")
             return
